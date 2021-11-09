@@ -1,14 +1,41 @@
 const express = require("express");
-
 const feedRoutes = require("./routes/feed");
-
 //Importing mongoose to create a model
 const mongoose = require("mongoose");
+const multer = require('multer')
+const path = require('path')
 
 const app = express();
 
+//Creating a file storage
+const fileStorage = multer.diskStorage({
+  //Setting the destination of the file
+  destination: (req, file, cb) => {
+    //(if error, folder)
+   cb(null, 'images')
+  },
+  //Setting the filename of the file
+  filename: (req, file, cb) => {
+    //(if error, name)
+    cb(null, Date.now() + '-' +file.originalname)
+  }
+})
+
+//Creating a filter of files
+const fileFilter = (req, file, cb) => {
+  if(file.mimetype === 'image//png' || file.mimetype === 'image/jpg' || file.mimetype === 'image/jpeg'){
+    cb(null, true)
+  }else{
+    cb(null, false)
+  }
+}
+
 // app.use(express.urlencoded()) // x-www-form-urlencoded <form>
 app.use(express.json()); //application/json
+//Registering the multer with the storage and filefilter setted 
+app.use(multer({storage:fileStorage, fileFilter: fileFilter}).single('image'))
+//Creating a static folder to serve all the requests from images
+app.use('/images', express.static(path.join(__dirname, 'images')))
 
 //Setting especial headers to avoid CORS error
 app.use((req, res, next) => {
@@ -25,6 +52,17 @@ app.use((req, res, next) => {
 
 //Using and fowarding any incoming request of feed
 app.use("/feed", feedRoutes);
+
+//Error middleware this always has to stay at last middleware
+app.use((error, req, res, next) => {
+  console.log(error)
+  //If status code is undefined, then the status will be 500
+  const status = error.statusCode || 500
+  //Extracting the error message
+  const message = error.message
+  //Responding to front the status and message
+  res.status(status).json({message:message})
+})
 
 //Connecting to mongoose and creating a messages db
 mongoose.connect(
