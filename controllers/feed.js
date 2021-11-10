@@ -1,23 +1,33 @@
 //Importing the result of validation route
 const { validationResult } = require("express-validator");
-const fs = require('fs')
-const path = require('path')
+const fs = require("fs");
+const path = require("path");
 
 //Importing the post model
 const Post = require("../models/post");
 
 exports.getPosts = (req, res, next) => {
+  const currentPage = req.query.page;
+  const perPage = 2;
+  let totalItems;
   //Finding the posts
   Post.find()
+    .countDocuments()
+    .then((count) => {
+      totalItems = count;
+      return Post.find()
+        .skip((currentPage - 1) * perPage)
+        .limit(perPage);
+    })
     .then((posts) => {
       //Sending a response to client as JSON format
       res
         .status(200)
-        .json({ message: "Posts fetched successfully!", posts: posts });
+        .json({ message: "Posts fetched successfully!", posts: posts, totalItems: totalItems });
     })
     .catch((err) => {
       if (!err.statusCode) {
-        err.statusCode = 500
+        err.statusCode = 500;
       }
       next(err);
     });
@@ -65,7 +75,7 @@ exports.postPosts = (req, res, next) => {
     })
     .catch((err) => {
       if (!err.statusCode) {
-        err.statusCode = 500
+        err.statusCode = 500;
       }
       next(err);
     });
@@ -90,7 +100,7 @@ exports.getPost = (req, res, next) => {
     })
     .catch((err) => {
       if (!err.statusCode) {
-        err.statusCode = 500
+        err.statusCode = 500;
       }
       next(err);
     });
@@ -131,28 +141,57 @@ exports.updatePost = (req, res, next) => {
         throw error;
       }
       //If the url inputed from user is different from the one is saved in db, then the saved one will be deleted
-      if(imageUrl !== post.imageUrl){
-        clearImage(post.imageUrl)
+      if (imageUrl !== post.imageUrl) {
+        clearImage(post.imageUrl);
       }
-      post.title = title
-      post.content = content
-      post.imageUrl = imageUrl
-      return post.save()
-    }).then(result => {
-      res.status(200).json({message: 'Post updated', post: result})
+      post.title = title;
+      post.content = content;
+      post.imageUrl = imageUrl;
+      return post.save();
+    })
+    .then((result) => {
+      res.status(200).json({ message: "Post updated", post: result });
     })
     .catch((err) => {
       if (!err.statusCode) {
-        err.statusCode = 500
+        err.statusCode = 500;
+      }
+      next(err);
+    });
+};
+
+exports.deletePost = (req, res, next) => {
+  const postId = req.params.postId;
+  Post.findById(postId)
+    .then((post) => {
+      //If the post was not found
+      if (!post) {
+        const error = new Error("Post not found!");
+        error.statusCode = 404;
+        //When we throw an error inside of a then block, then the error will be catched in the next catch error block
+        throw error;
+      }
+      //Deleting the file from server
+      clearImage(post.imageUrl);
+      //Returning the method to delete the post from mongodb
+      return Post.findByIdAndRemove(postId);
+    })
+    .then((result) => {
+      //Sending the result to front
+      res.status(200).json({ message: "Deleted post." });
+    })
+    .catch((err) => {
+      if (!err.statusCode) {
+        err.statusCode = 500;
       }
       next(err);
     });
 };
 
 //Function to remove a file
-const clearImage = filePath => {
+const clearImage = (filePath) => {
   //Assigning the path of image
-  filePath = path.join(__dirname, '..', filePath)
+  filePath = path.join(__dirname, "..", filePath);
   //Deleting the image
-  fs.unlink(filePath, err => console.log(err))
-}
+  fs.unlink(filePath, (err) => console.log(err));
+};

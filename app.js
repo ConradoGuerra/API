@@ -1,5 +1,6 @@
 const express = require("express");
 const feedRoutes = require("./routes/feed");
+const authRoutes = require("./routes/auth");
 //Importing mongoose to create a model
 const mongoose = require("mongoose");
 const multer = require('multer')
@@ -50,6 +51,8 @@ app.use((req, res, next) => {
   next();
 });
 
+//Using and fowarding any incoming request of auth
+app.use("/auth", authRoutes);
 //Using and fowarding any incoming request of feed
 app.use("/feed", feedRoutes);
 
@@ -60,8 +63,9 @@ app.use((error, req, res, next) => {
   const status = error.statusCode || 500
   //Extracting the error message
   const message = error.message
+  const data = error.data
   //Responding to front the status and message
-  res.status(status).json({message:message})
+  res.status(status).json({message:message, data: data})
 })
 
 //Connecting to mongoose and creating a messages db
