@@ -2,6 +2,7 @@
 const { validationResult } = require("express-validator");
 const fs = require("fs");
 const path = require("path");
+const User = require("../models/user");
 
 //Importing the post model
 const Post = require("../models/post");
@@ -21,9 +22,11 @@ exports.getPosts = (req, res, next) => {
     })
     .then((posts) => {
       //Sending a response to client as JSON format
-      res
-        .status(200)
-        .json({ message: "Posts fetched successfully!", posts: posts, totalItems: totalItems });
+      res.status(200).json({
+        message: "Posts fetched successfully!",
+        posts: posts,
+        totalItems: totalItems,
+      });
     })
     .catch((err) => {
       if (!err.statusCode) {
@@ -33,7 +36,7 @@ exports.getPosts = (req, res, next) => {
     });
 };
 
-exports.postPosts = (req, res, next) => {
+exports.createPost = (req, res, next) => {
   //Assining the validationResult to a variable
   const errors = validationResult(req);
   //If an error exists
@@ -54,23 +57,35 @@ exports.postPosts = (req, res, next) => {
   const imageUrl = req.file.path.replace("\\", "/");
   const title = req.body.title;
   const content = req.body.content;
+  let creator;
 
   //Creating a mongodb document
   const post = new Post({
     title: title,
     content: content,
-    creator: {
-      name: "Conrado",
-    },
+    creator: req.userId,
     imageUrl: imageUrl,
   });
   // Create post in DB
   post
     .save()
     .then((result) => {
+      //With the post created, i will find the user and add the post to that user
+      return User.findById(req.userId);
+    })
+    .then((user) => {
+      creator = user;
+      user.posts.push(post);
+      return user.save();
+    })
+    .then((result) => {
       res.status(201).json({
-        message: "Post create successfully",
-        post: result,
+        message: "Post created successfully",
+        post: post,
+        creator: {
+          _id: creator._id,
+          name: creator.name
+        }
       });
     })
     .catch((err) => {
