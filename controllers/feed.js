@@ -84,8 +84,8 @@ exports.createPost = (req, res, next) => {
         post: post,
         creator: {
           _id: creator._id,
-          name: creator.name
-        }
+          name: creator.name,
+        },
       });
     })
     .catch((err) => {
@@ -155,6 +155,11 @@ exports.updatePost = (req, res, next) => {
         //When we throw an error inside of a then block, then the error will be catched in the next catch error block
         throw error;
       }
+      if (post.creator.toString() !== req.userId) {
+        const error = new Error("Not authorized!");
+        error.statusCode = 403;
+        throw error;
+      }
       //If the url inputed from user is different from the one is saved in db, then the saved one will be deleted
       if (imageUrl !== post.imageUrl) {
         clearImage(post.imageUrl);
@@ -186,14 +191,76 @@ exports.deletePost = (req, res, next) => {
         //When we throw an error inside of a then block, then the error will be catched in the next catch error block
         throw error;
       }
+      if (post.creator.toString() !== req.userId) {
+        const error = new Error("Not authorized!");
+        error.statusCode = 403;
+        throw error;
+      }
       //Deleting the file from server
       clearImage(post.imageUrl);
       //Returning the method to delete the post from mongodb
       return Post.findByIdAndRemove(postId);
     })
     .then((result) => {
+      return User.findById(req.userId);
+    })
+    //Deleting the postId in the user document
+    .then((user) => {
+      user.posts.pull(postId);
+      return user.save();
+    })
+    .then((result) => {
       //Sending the result to front
       res.status(200).json({ message: "Deleted post." });
+    })
+    .catch((err) => {
+      if (!err.statusCode) {
+        err.statusCode = 500;
+      }
+      next(err);
+    });
+};
+
+exports.getUserStatus = (req, res, next) => {
+  User.findById(req.userId)
+    .then((user) => {
+      if (!user) {
+        const error = new Error("User not found!");
+        error.statusCode = 404;
+        throw error;
+      }
+      const status = user.status;
+      if (!status) {
+        const error = new Error("Status not found!");
+        error.statusCode = 404;
+        //When we throw an error inside of a then block, then the error will be catched in the next catch error block
+        throw error;
+      }
+      res.status(200).json({ message: "Status fetched", status: status });
+    })
+    .catch((err) => {
+      if (!err.statusCode) {
+        err.statusCode = 500;
+      }
+      next(err);
+    });
+};
+
+exports.updateUsertatus = (req, res, next) => {
+  const userId = req.userId;
+  const newStatus = req.body.status
+  User.findById(userId)
+    .then((user) => {
+      if (!user) {
+        const error = new Error("User not found!");
+        error.statusCode = 404;
+        throw error;
+      }
+      user.status = newStatus
+      return user.save()
+    })
+    .then(result => {
+      res.status(200).json({message: 'Status Updated!', status: newStatus})
     })
     .catch((err) => {
       if (!err.statusCode) {
