@@ -4,7 +4,7 @@ const bcrypt = require("bcryptjs");
 const User = require("../models/user");
 const jwt = require("jsonwebtoken");
 
-exports.signup = (req, res, next) => {
+exports.signup = async (req, res, next) => {
   //Extrating errors, if exists
   const errors = validationResult(req);
   //If errors
@@ -18,72 +18,64 @@ exports.signup = (req, res, next) => {
   const password = req.body.password;
   const name = req.body.name;
   //Encripting the password
-  bcrypt
-    .hash(password, 12)
-    .then((hashedPw) => {
-      //Creating a new user in mongodb
-      const user = new User({
-        email: email,
-        password: hashedPw,
-        name: name,
-      });
-      return user.save();
-    })
-    .then((result) => {
-      //Setting the status for new resource and send json msg with the userid
-      res.status(201).json({ userId: result._Id, message: "User created!" });
-    })
-    .catch((err) => {
-      if (!err.statusCode) {
-        err.statusCode = 500;
-      }
-      next(err);
+  try {
+    const hashedPw = await bcrypt.hash(password, 12);
+    //Creating a new user in mongodb
+    const user = new User({
+      email: email,
+      password: hashedPw,
+      name: name,
     });
+    const result = await user.save();
+    //Setting the status for new resource and send json msg with the userid
+    res.status(201).json({ userId: result._Id, message: "User created!" });
+  } catch (err) {
+    if (!err.statusCode) {
+      err.statusCode = 500;
+    }
+    next(err);
+  }
 };
 
-exports.login = (req, res, next) => {
+exports.login = async (req, res, next) => {
   //Retrieving the data
   const email = req.body.email;
   const password = req.body.password;
   const name = req.body.name;
   let loadedUser;
-
-  //Searching for the user in mongodb
-  User.findOne({ email: email })
-    .then((user) => {
-      if (!user) {
-        const error = new Error("No user found!");
-        error.statusCode = 401;
-        throw error;
-      }
-      loadedUser = user;
-      //Comparing the passwords, this return a promise
-      return bcrypt.compare(password, user.password);
-    })
+  try {
+    //Searching for the user in mongodb
+    const user = await User.findOne({ email: email });
+    if (!user) {
+      const error = new Error("No user found!");
+      error.statusCode = 401;
+      throw error;
+    }
+    loadedUser = user;
+    //Comparing the passwords, this return a promise
+    const isEqual = await bcrypt.compare(password, user.password);
     //then, if not equal
-    .then((isEqual) => {
-      if (!isEqual) {
-        const error = new Error("Wrong password!");
-        error.status = 401;
-        throw error;
-      }
-      //Creating a new signature for token
-      const token = jwt.sign(
-        {
-          email: loadedUser.email,
-          userId: loadedUser._id.toString(),
-        },
-        //Passing a private key to use for signing the token
-        "ultrasecretconcontoken",
-        { expiresIn: "1h" }
-      );
-      //Returning the response to client
-      res.status(200).json({token: token, userId: loadedUser._id.toString()})
-    })
-    .catch((err) => {
-      if (!err.statusCode) {
-        err.statusCode = 500;
-      }
-      next(err);
-    });
+    if (!isEqual) {
+      const error = new Error("Wrong password!");
+      error.status = 401;
+      throw error;
+    }
+    //Creating a new signature for token
+    const token = jwt.sign(
+      {
+        email: loadedUser.email,
+        userId: loadedUser._id.toString(),
+      },
+      //Passing a private key to use for signing the token
+      "ultrasecretconcontoken",
+      { expiresIn: "1h" }
+    );
+    //Returning the response to client
+    res.status(200).json({ token: token, userId: loadedUser._id.toString() });
+  } catch (err) {
+    if (!err.statusCode) {
+      err.statusCode = 500;
+    }
+    next(err);
+  }
 };

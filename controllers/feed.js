@@ -7,36 +7,33 @@ const User = require("../models/user");
 //Importing the post model
 const Post = require("../models/post");
 
-exports.getPosts = (req, res, next) => {
+exports.getPosts = async (req, res, next) => {
   const currentPage = req.query.page;
   const perPage = 2;
-  let totalItems;
-  //Finding the posts
-  Post.find()
-    .countDocuments()
-    .then((count) => {
-      totalItems = count;
-      return Post.find()
-        .skip((currentPage - 1) * perPage)
-        .limit(perPage);
-    })
-    .then((posts) => {
-      //Sending a response to client as JSON format
-      res.status(200).json({
-        message: "Posts fetched successfully!",
-        posts: posts,
-        totalItems: totalItems,
-      });
-    })
-    .catch((err) => {
-      if (!err.statusCode) {
-        err.statusCode = 500;
-      }
-      next(err);
+  //Working with await, await is a way to substitute the then block, it does the same task of then in a way more simple
+  //In this case, we use the await to count the documents of Post, the total items variable will receive the result
+  try {
+    const totalItems = await Post.find().countDocuments();
+    //Here posts will receive the posts respecting the orientation below
+    const posts = await Post.find()
+      .populate("creator")
+      .skip((currentPage - 1) * perPage)
+      .limit(perPage);
+    //Sending a response to client as JSON format
+    res.status(200).json({
+      message: "Posts fetched successfully!",
+      posts: posts,
+      totalItems: totalItems,
     });
+  } catch (err) {
+    if (!err.statusCode) {
+      err.statusCode = 500;
+    }
+    next(err);
+  }
 };
 
-exports.createPost = (req, res, next) => {
+exports.createPost = async (req, res, next) => {
   //Assining the validationResult to a variable
   const errors = validationResult(req);
   //If an error exists
@@ -57,7 +54,6 @@ exports.createPost = (req, res, next) => {
   const imageUrl = req.file.path.replace("\\", "/");
   const title = req.body.title;
   const content = req.body.content;
-  let creator;
 
   //Creating a mongodb document
   const post = new Post({
@@ -66,62 +62,54 @@ exports.createPost = (req, res, next) => {
     creator: req.userId,
     imageUrl: imageUrl,
   });
-  // Create post in DB
-  post
-    .save()
-    .then((result) => {
-      //With the post created, i will find the user and add the post to that user
-      return User.findById(req.userId);
-    })
-    .then((user) => {
-      creator = user;
-      user.posts.push(post);
-      return user.save();
-    })
-    .then((result) => {
-      res.status(201).json({
-        message: "Post created successfully",
-        post: post,
-        creator: {
-          _id: creator._id,
-          name: creator.name,
-        },
-      });
-    })
-    .catch((err) => {
-      if (!err.statusCode) {
-        err.statusCode = 500;
-      }
-      next(err);
+  try {
+    // Create post in DB
+    await post.save();
+    //With the post created, i will find the user and add the post to that user
+    const user = await User.findById(req.userId);
+    user.posts.push(post);
+    await user.save();
+    res.status(201).json({
+      message: "Post created successfully",
+      post: post,
+      creator: {
+        _id: user._id,
+        name: user.name,
+      },
     });
+  } catch (err) {
+    if (!err.statusCode) {
+      err.statusCode = 500;
+    }
+    next(err);
+  }
 };
 
 //Getting the detailed post
-exports.getPost = (req, res, next) => {
+exports.getPost = async (req, res, next) => {
   //Requesting the parameter from body
   const postId = req.params.postId;
   //Searching for the post in mongodb
-  Post.findById(postId)
-    .then((post) => {
-      //If the post was not found
-      if (!post) {
-        const error = new Error("Post not found!");
-        error.statusCode = 404;
-        //When we throw an error inside of a then block, then the error will be catched in the next catch error block
-        throw error;
-      }
-      post.imageUrl = "http://localhost:8080/" + post.imageUrl;
-      res.status(200).json({ message: "Detailed post fetched", post: post });
-    })
-    .catch((err) => {
-      if (!err.statusCode) {
-        err.statusCode = 500;
-      }
-      next(err);
-    });
+  try {
+    const post = await Post.findById(postId);
+    //If the post was not found
+    if (!post) {
+      const error = new Error("Post not found!");
+      error.statusCode = 404;
+      //When we throw an error inside of a then block, then the error will be catched in the next catch error block
+      throw error;
+    }
+    post.imageUrl = "http://localhost:8080/" + post.imageUrl;
+    res.status(200).json({ message: "Detailed post fetched", post: post });
+  } catch (err) {
+    if (!err.statusCode) {
+      err.statusCode = 500;
+    }
+    next(err);
+  }
 };
 
-exports.updatePost = (req, res, next) => {
+exports.updatePost = async (req, res, next) => {
   const postId = req.params.postId;
   //Assining the validationResult to a variable
   const errors = validationResult(req);
@@ -146,128 +134,120 @@ exports.updatePost = (req, res, next) => {
     error.statusCode = 422;
     throw error;
   }
-  Post.findById(postId)
-    .then((post) => {
-      //If the post was not found
-      if (!post) {
-        const error = new Error("Post not found!");
-        error.statusCode = 404;
-        //When we throw an error inside of a then block, then the error will be catched in the next catch error block
-        throw error;
-      }
-      if (post.creator.toString() !== req.userId) {
-        const error = new Error("Not authorized!");
-        error.statusCode = 403;
-        throw error;
-      }
-      //If the url inputed from user is different from the one is saved in db, then the saved one will be deleted
-      if (imageUrl !== post.imageUrl) {
-        clearImage(post.imageUrl);
-      }
-      post.title = title;
-      post.content = content;
-      post.imageUrl = imageUrl;
-      return post.save();
-    })
-    .then((result) => {
-      res.status(200).json({ message: "Post updated", post: result });
-    })
-    .catch((err) => {
-      if (!err.statusCode) {
-        err.statusCode = 500;
-      }
-      next(err);
-    });
-};
-
-exports.deletePost = (req, res, next) => {
-  const postId = req.params.postId;
-  Post.findById(postId)
-    .then((post) => {
-      //If the post was not found
-      if (!post) {
-        const error = new Error("Post not found!");
-        error.statusCode = 404;
-        //When we throw an error inside of a then block, then the error will be catched in the next catch error block
-        throw error;
-      }
-      if (post.creator.toString() !== req.userId) {
-        const error = new Error("Not authorized!");
-        error.statusCode = 403;
-        throw error;
-      }
-      //Deleting the file from server
+  try {
+    //Searching for the post
+    const post = await Post.findById(postId);
+    //If the post was not found
+    if (!post) {
+      const error = new Error("Post not found!");
+      error.statusCode = 404;
+      //When we throw an error inside of a then block, then the error will be catched in the next catch error block
+      throw error;
+    }
+    if (post.creator.toString() !== req.userId) {
+      const error = new Error("Not authorized!");
+      error.statusCode = 403;
+      throw error;
+    }
+    //If the url inputed from user is different from the one is saved in db, then the saved one will be deleted
+    if (imageUrl !== post.imageUrl) {
       clearImage(post.imageUrl);
-      //Returning the method to delete the post from mongodb
-      return Post.findByIdAndRemove(postId);
-    })
-    .then((result) => {
-      return User.findById(req.userId);
-    })
+    }
+    post.title = title;
+    post.content = content;
+    post.imageUrl = imageUrl;
+    const result = await post.save();
+    res.status(200).json({ message: "Post updated", post: result });
+  } catch (err) {
+    if (!err.statusCode) {
+      err.statusCode = 500;
+    }
+    next(err);
+  }
+};
+
+exports.deletePost = async (req, res, next) => {
+  const postId = req.params.postId;
+  try {
+    const post = await Post.findById(postId);
+    //If the post was not found
+    if (!post) {
+      const error = new Error("Post not found!");
+      error.statusCode = 404;
+      //When we throw an error inside of a then block, then the error will be catched in the next catch error block
+      throw error;
+    }
+    if (post.creator.toString() !== req.userId) {
+      const error = new Error("Not authorized!");
+      error.statusCode = 403;
+      throw error;
+    }
+    //Deleting the file from server
+    clearImage(post.imageUrl);
+    //Returning the method to delete the post from mongodb
+    await Post.findByIdAndRemove(postId);
+    const user = await User.findById(req.userId);
     //Deleting the postId in the user document
-    .then((user) => {
-      user.posts.pull(postId);
-      return user.save();
-    })
-    .then((result) => {
-      //Sending the result to front
-      res.status(200).json({ message: "Deleted post." });
-    })
-    .catch((err) => {
-      if (!err.statusCode) {
-        err.statusCode = 500;
-      }
-      next(err);
-    });
+    user.posts.pull(postId);
+    const result = await user.save();
+    //Sending the result to front
+    res.status(200).json({ message: "Deleted post." });
+  } catch (err) {
+    if (!err.statusCode) {
+      err.statusCode = 500;
+    }
+    next(err);
+  }
 };
 
-exports.getUserStatus = (req, res, next) => {
-  User.findById(req.userId)
-    .then((user) => {
-      if (!user) {
-        const error = new Error("User not found!");
-        error.statusCode = 404;
-        throw error;
-      }
-      const status = user.status;
-      if (!status) {
-        const error = new Error("Status not found!");
-        error.statusCode = 404;
-        //When we throw an error inside of a then block, then the error will be catched in the next catch error block
-        throw error;
-      }
-      res.status(200).json({ message: "Status fetched", status: status });
-    })
-    .catch((err) => {
-      if (!err.statusCode) {
-        err.statusCode = 500;
-      }
-      next(err);
-    });
+exports.getUserStatus = async (req, res, next) => {
+  try {
+    //Searching for the user to get its status
+    const user = await User.findById(req.userId);
+    if (!user) {
+      const error = new Error("User not found!");
+      error.statusCode = 404;
+      throw error;
+    }
+    const status = user.status;
+    if (!status) {
+      const error = new Error("Status not found!");
+      error.statusCode = 404;
+      //When we throw an error inside of a then block, then the error will be catched in the next catch error block
+      throw error;
+    }
+    res.status(200).json({ message: "Status fetched", status: status });
+  } catch (err) {
+    if (!err.statusCode) {
+      err.statusCode = 500;
+    }
+    next(err);
+  }
 };
 
-exports.updateUsertatus = (req, res, next) => {
+exports.updateUsertatus = async (req, res, next) => {
   const userId = req.userId;
-  const newStatus = req.body.status
-  User.findById(userId)
-    .then((user) => {
-      if (!user) {
-        const error = new Error("User not found!");
-        error.statusCode = 404;
-        throw error;
-      }
-      user.status = newStatus
-      return user.save()
-    })
-    .then(result => {
-      res.status(200).json({message: 'Status Updated!', status: newStatus})
-    })
-    .catch((err) => {
-      if (!err.statusCode) {
-        err.statusCode = 500;
-      }
-      next(err);
-    });
+  const newStatus = req.body.status;
+  try {
+    //Searching for the user
+    const user = await User.findById(userId);
+    if (!user) {
+      const error = new Error("User not found!");
+      error.statusCode = 404;
+      throw error;
+    }
+    //Changing the user status
+    user.status = newStatus;
+    //Saving in DB the newStatys
+    await user.save();
+    //Sending to front-end the data
+    res.status(200).json({ message: "Status Updated!", status: newStatus });
+  } catch (err) {
+    if (!err.statusCode) {
+      err.statusCode = 500;
+    }
+    next(err);
+  }
 };
 
 //Function to remove a file
