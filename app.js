@@ -58,7 +58,6 @@ app.use("/feed", feedRoutes);
 
 //Error middleware this always has to stay at last middleware
 app.use((error, req, res, next) => {
-  console.log(error)
   //If status code is undefined, then the status will be 500
   const status = error.statusCode || 500
   //Extracting the error message
@@ -72,6 +71,12 @@ app.use((error, req, res, next) => {
 mongoose.connect(
   "mongodb+srv://conrado:262800@cluster0.gpslw.mongodb.net/messages"
 ).then(result => {
-    app.listen(8080);
+    const server = app.listen(8080);
+    //Setting the socket connection using the http protocol
+    const io = require('./socket').init(server)
+    //Creating and event listener to each connection done
+    io.on('connection', socket => {
+      console.log('Client connected')
+    })
 }).catch(err => console.log(err));
 

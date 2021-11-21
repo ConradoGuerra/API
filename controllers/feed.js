@@ -3,6 +3,7 @@ const { validationResult } = require("express-validator");
 const fs = require("fs");
 const path = require("path");
 const User = require("../models/user");
+const io = require('../socket')
 
 //Importing the post model
 const Post = require("../models/post");
@@ -16,7 +17,8 @@ exports.getPosts = async (req, res, next) => {
     const totalItems = await Post.find().countDocuments();
     //Here posts will receive the posts respecting the orientation below
     const posts = await Post.find()
-      .populate("creator")
+      .populate('creator')
+      .sort({createdAt: -1})
       .skip((currentPage - 1) * perPage)
       .limit(perPage);
     //Sending a response to client as JSON format
@@ -69,6 +71,9 @@ exports.createPost = async (req, res, next) => {
     const user = await User.findById(req.userId);
     user.posts.push(post);
     await user.save();
+    //Getting the IO estabilish object (connection)
+    //Emit function send a message to all users (event name, the data I wanna send)
+    io.getIO().emit('posts', {action : 'create', post: post, creator: {_id: req.userId, name: user.name}})
     res.status(201).json({
       message: "Post created successfully",
       post: post,
@@ -136,7 +141,7 @@ exports.updatePost = async (req, res, next) => {
   }
   try {
     //Searching for the post
-    const post = await Post.findById(postId);
+    const post = await Post.findById(postId).populate('creator');
     //If the post was not found
     if (!post) {
       const error = new Error("Post not found!");
@@ -144,7 +149,7 @@ exports.updatePost = async (req, res, next) => {
       //When we throw an error inside of a then block, then the error will be catched in the next catch error block
       throw error;
     }
-    if (post.creator.toString() !== req.userId) {
+    if (post.creator._id.toString() !== req.userId) {
       const error = new Error("Not authorized!");
       error.statusCode = 403;
       throw error;
@@ -157,6 +162,8 @@ exports.updatePost = async (req, res, next) => {
     post.content = content;
     post.imageUrl = imageUrl;
     const result = await post.save();
+    //Emit function send a message to all users (event name, the data I wanna send)
+    io.getIO().emit('posts', {action: 'update', post: result})
     res.status(200).json({ message: "Post updated", post: result });
   } catch (err) {
     if (!err.statusCode) {
@@ -190,6 +197,8 @@ exports.deletePost = async (req, res, next) => {
     //Deleting the postId in the user document
     user.posts.pull(postId);
     const result = await user.save();
+    //Emit function send a message to all users (event name, the data I wanna send)
+    io.getIO().emit('posts', {action: 'delete', post: postId})
     //Sending the result to front
     res.status(200).json({ message: "Deleted post." });
   } catch (err) {
