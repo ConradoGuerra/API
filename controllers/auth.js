@@ -64,7 +64,7 @@ exports.login = async (req, res, next) => {
     const token = jwt.sign(
       {
         email: loadedUser.email,
-        userId: loadedUser._id.toString(),
+        userId: loadedUser._id.toString()
       },
       //Passing a private key to use for signing the token
       "ultrasecretconcontoken",
@@ -72,6 +72,35 @@ exports.login = async (req, res, next) => {
     );
     //Returning the response to client
     res.status(200).json({ token: token, userId: loadedUser._id.toString() });
+    return
+
+  } catch (err) {
+    if (!err.statusCode) {
+      err.statusCode = 500;
+      return err
+    }
+    next(err);
+  }
+};
+
+
+exports.getUserStatus = async (req, res, next) => {
+  try {
+    //Searching for the user to get its status
+    const user = await User.findById(req.userId);
+    if (!user) {
+      const error = new Error("User not found!");
+      error.statusCode = 404;
+      throw error;
+    }
+    const status = user.status;
+    if (!status) {
+      const error = new Error("Status not found!");
+      error.statusCode = 404;
+      //When we throw an error inside of a then block, then the error will be catched in the next catch error block
+      throw error;
+    }
+    res.status(200).json({ message: "Status fetched", status: status });
   } catch (err) {
     if (!err.statusCode) {
       err.statusCode = 500;
@@ -79,3 +108,29 @@ exports.login = async (req, res, next) => {
     next(err);
   }
 };
+
+exports.updateUsertatus = async (req, res, next) => {
+  const userId = req.userId;
+  const newStatus = req.body.status;
+  try {
+    //Searching for the user
+    const user = await User.findById(userId);
+    if (!user) {
+      const error = new Error("User not found!");
+      error.statusCode = 404;
+      throw error;
+    }
+    //Changing the user status
+    user.status = newStatus;
+    //Saving in DB the newStatys
+    await user.save();
+    //Sending to front-end the data
+    res.status(200).json({ message: "Status Updated!", status: newStatus });
+  } catch (err) {
+    if (!err.statusCode) {
+      err.statusCode = 500;
+    }
+    next(err);
+  }
+};
+

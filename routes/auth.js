@@ -30,4 +30,10 @@ router.put(
 //POST /auth/login
 router.post('/login', authController.login)
 
+//GET /auth/status
+router.get('/status', isAuth, authController.getUserStatus)
+
+//POST /auth/status
+router.patch('/status', isAuth, authController.updateUsertatus)
+
 module.exports = router;

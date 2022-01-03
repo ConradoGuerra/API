@@ -1,5 +1,7 @@
 //Importing chai
 const expect = require("chai").expect;
+const sinon = require('sinon')
+const jwt = require('jsonwebtoken')
 
 //Impoting the auth middleware function
 const authMiddleware = require("../middleware/is-auth");
@@ -31,4 +33,27 @@ describe("Auth middleware", function () {
     };
     expect(authMiddleware.bind(this, req, {}, () => {})).to.throw();
   });
+
+  it('it should yield a userid after decoding the token', function(){
+    const req = {
+      get: function(){
+        return 'Bearer abc'
+      }
+    }
+
+    //As we are testing the jwt.verify method, we have to require it and test with sinon
+    //So we stub the object jwt, method verify
+    sinon.stub(jwt, 'verify')
+    //Then it will return a userid, like middleware "is-auth.js"
+    jwt.verify.returns({userId: 'test'})
+    //Now we use the middleware
+    authMiddleware(req, {}, ()=>{})
+    //We expect the require to have a property userId, as the original middleware
+    expect(req).to.have.property('userId')
+    //Verifying if the function verify was called
+    expect(jwt.verify.called).to.be.true
+    //Restoring the jwt.verify to original functionality
+    jwt.verify.restore()
+
+  })
 });
